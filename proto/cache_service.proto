@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package distcache;
+
+option cc_enable_arenas = true;
+
+// High-performance distributed cache service.
+// Designed for ultra-low-latency inter-service communication via gRPC.
+service CacheService {
+  // Get a single value by key
+  rpc Get(GetRequest) returns (GetResponse);
+
+  // Set a key-value pair with optional TTL
+  rpc Set(SetRequest) returns (SetResponse);
+
+  // Delete a key
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+
+  // Bulk get multiple keys
+  rpc MultiGet(MultiGetRequest) returns (MultiGetResponse);
+
+  // Bulk set multiple key-value pairs
+  rpc MultiSet(MultiSetRequest) returns (MultiSetResponse);
+
+  // Get cache metrics for observability
+  rpc GetMetrics(MetricsRequest) returns (MetricsResponse);
+
+  // Health check for load balancer probes
+  rpc HealthCheck(HealthRequest) returns (HealthResponse);
+}
+
+message GetRequest {
+  string key = 1;
+}
+
+message GetResponse {
+  bool found = 1;
+  string value = 2;
+}
+
+message SetRequest {
+  string key = 1;
+  string value = 2;
+  int64 ttl_seconds = 3;  // 0 = default TTL
+}
+
+message SetResponse {
+  bool success = 1;
+}
+
+message DeleteRequest {
+  string key = 1;
+}
+
+message DeleteResponse {
+  bool deleted = 1;
+}
+
+message MultiGetRequest {
+  repeated string keys = 1;
+}
+
+message MultiGetResponse {
+  map<string, string> entries = 1;
+  repeated string missing_keys = 2;
+}
+
+message MultiSetRequest {
+  map<string, string> entries = 1;
+  int64 ttl_seconds = 2;
+}
+
+message MultiSetResponse {
+  int64 set_count = 1;
+}
+
+message MetricsRequest {}
+
+message MetricsResponse {
+  uint64 total_gets = 1;
+  uint64 total_sets = 2;
+  uint64 cache_hits = 3;
+  uint64 cache_misses = 4;
+  uint64 evictions = 5;
+  double hit_rate = 6;
+  uint64 current_size = 7;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  string status = 1;
+  int64 uptime_seconds = 2;
+}

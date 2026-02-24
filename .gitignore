@@ -1,0 +1,23 @@
+# Build
+build/
+cmake-build-*/
+*.o
+*.a
+*.so
+*.dylib
+
+# IDE
+.vscode/
+.idea/
+*.swp
+compile_commands.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated
+*.pb.h
+*.pb.cc
+*.grpc.pb.h
+*.grpc.pb.cc
