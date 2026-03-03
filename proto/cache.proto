@@ -1,0 +1,150 @@
+// ============================================================================
+// cache.proto — Service Definition via Protocol Buffers (protobuf)
+// ============================================================================
+//
+// WHAT IS THIS FILE?
+//   This is a Protocol Buffer (protobuf) IDL (Interface Definition Language) file.
+//   It describes the "contract" of our gRPC service — the exact format of all
+//   messages sent over the network and the remote procedure calls (RPCs) that
+//   clients can invoke on the cache server.
+//
+// WHY USE PROTOBUF INSTEAD OF JSON/XML?
+//   - Binary serialization: protobuf encodes data as compact binary.
+//     A JSON string like {"key":"user_123"} takes ~20 bytes. The protobuf
+//     equivalent takes ~11 bytes — nearly 50% smaller.
+//   - Faster parsing: no text-to-object conversion, no string allocation.
+//     Benchmarks show protobuf is 3-10x faster than JSON for the same data.
+//   - Schema enforcement: the .proto file acts as strict type-safe documentation.
+//     Clients and servers CANNOT send unexpected fields.
+//
+// WHY USE gRPC INSTEAD OF REST?
+//   - gRPC uses HTTP/2 under the hood, which allows request multiplexing:
+//     multiple requests fly over the same TCP connection simultaneously,
+//     eliminating head-of-line blocking from HTTP/1.1.
+//   - Strongly typed: the generated C++ code means there is zero manual
+//     serialization logic. The compiler catches type errors.
+//   - Streaming support: gRPC supports server-side streaming, bidirectional
+//     streaming — invaluable for cache invalidation push notifications.
+//
+// HOW IS THIS FILE USED?
+//   The protoc compiler (Protocol Buffers Compiler) reads this file and generates
+//   two C++ header/source pairs:
+//     - cache.pb.h / cache.pb.cc   → C++ classes for SetRequest, GetRequest, etc.
+//     - cache.grpc.pb.h / cache.grpc.pb.cc → C++ classes for the gRPC service stubs
+//   These generated files are then compiled into our binary like normal C++ code.
+//
+// ============================================================================
+
+syntax = "proto3";  // proto3 is the modern version; simpler than proto2.
+
+// The "package" maps to a C++ namespace. All generated classes will be inside
+// the `distcache` namespace, avoiding name collisions with other libraries.
+package distcache;
+
+// ============================================================================
+// Service Definition
+// ============================================================================
+// A "service" in protobuf is like an interface. It declares what RPC methods
+// the server will implement. The client gets a matching "stub" object it calls
+// as if they were local function calls — the network is invisible from the
+// caller's perspective.
+service CacheService {
+  // rpc Set: The client sends a SetRequest, the server returns a SetResponse.
+  // This is a "unary RPC" — one request, one response. Like a function call.
+  // Internally, gRPC serializes the SetRequest struct to binary, sends it over
+  // HTTP/2, the server deserializes it, runs our C++ handler, serializes the
+  // SetResponse, and sends it back. All of this happens in microseconds.
+  rpc Set (SetRequest) returns (SetResponse) {}
+
+  // rpc Get: Retrieve a value by key. Returns found=true/false and the value.
+  rpc Get (GetRequest) returns (GetResponse) {}
+
+  // rpc Delete: Remove a key-value pair from the cache.
+  rpc Delete (DeleteRequest) returns (DeleteResponse) {}
+
+  // rpc Exists: Check if a key exists without retrieving the value.
+  // Why expose this separately? It avoids value allocation for existence checks,
+  // which is a common pattern in caching (e.g., checking session validity).
+  rpc Exists (ExistsRequest) returns (ExistsResponse) {}
+
+  // rpc Stats: Returns live metrics from the cache server.
+  // This is critical for an interviewer discussion point — we can expose
+  // hit rate, eviction count, etc., via this RPC in addition to Prometheus.
+  rpc Stats (StatsRequest) returns (StatsResponse) {}
+}
+
+// ============================================================================
+// Message Definitions
+// ============================================================================
+// Every field has:
+//   - A type (string, bool, int32, int64, etc.)
+//   - A name
+//   - A field number (e.g., = 1, = 2)
+//
+// Field numbers are how protobuf identifies fields in binary encoding.
+// They are NOT the values — they are permanent IDs. Once defined, you should
+// never reuse a field number (it breaks backward compatibility).
+
+// --- Set RPC ---
+
+message SetRequest {
+  string key = 1;       // The cache key. Must be a non-empty string.
+  string value = 2;     // The value to store. Treated as raw bytes by the cache.
+  int32 ttl_seconds = 3; // Time-to-live in seconds. 0 means no expiration.
+                         // Using int32 supports TTLs up to ~68 years.
+}
+
+message SetResponse {
+  bool success = 1;     // True if the key was stored successfully.
+                        // False if the cache is full and eviction failed.
+}
+
+// --- Get RPC ---
+
+message GetRequest {
+  string key = 1;       // The key to look up.
+}
+
+message GetResponse {
+  bool found = 1;       // True if the key exists AND has not expired.
+  string value = 2;     // The value. Only populated if found=true.
+                        // In protobuf3, unset strings default to "".
+}
+
+// --- Delete RPC ---
+
+message DeleteRequest {
+  string key = 1;
+}
+
+message DeleteResponse {
+  bool deleted = 1;     // True if the key existed and was removed.
+                        // False if the key was not found (idempotent).
+}
+
+// --- Exists RPC ---
+
+message ExistsRequest {
+  string key = 1;
+}
+
+message ExistsResponse {
+  bool exists = 1;      // True if key is present and not expired.
+}
+
+// --- Stats RPC ---
+
+message StatsRequest {
+  // Empty message. The client just needs to call this to get stats.
+  // In proto3, empty messages are perfectly valid and common.
+}
+
+message StatsResponse {
+  uint64 total_gets = 1;      // Total number of Get requests received.
+  uint64 total_sets = 2;      // Total number of Set requests received.
+  uint64 cache_hits = 3;      // Gets that found a non-expired key.
+  uint64 cache_misses = 4;    // Gets that found nothing (or expired).
+  uint64 evictions = 5;       // Number of keys forcibly removed due to capacity.
+  uint64 total_keys = 6;      // Current number of live keys across all shards.
+  double hit_rate = 7;        // cache_hits / total_gets. Key performance indicator.
+}
